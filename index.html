@@ -22,6 +22,36 @@
 <div id="lock" hidden></div>
 <div id="toast"></div>
 
+<script>
+// Self-heal from a known Firestore SDK bug (mostly hits Safari/WebKit): a corrupted local
+// IndexedDB cache trips "INTERNAL ASSERTION FAILED" and leaves a blank screen. Regular users
+// can't be walked through DevTools, so detect it and recover automatically instead.
+(function () {
+  function looksLikeCorruptCache(msg) {
+    return /FIRESTORE/.test(msg) && /(INTERNAL ASSERTION|Unexpected state)/.test(msg);
+  }
+  function heal() {
+    if (sessionStorage.getItem('tdme.healed')) return;
+    sessionStorage.setItem('tdme.healed', '1');
+    try {
+      if (indexedDB.databases) {
+        indexedDB.databases().then(function (dbs) {
+          (dbs || []).forEach(function (d) { if (d.name) indexedDB.deleteDatabase(d.name); });
+          location.reload();
+        }).catch(function () { location.reload(); });
+      } else {
+        ['firestore/[DEFAULT]/materic-id/main', 'firebaseLocalStorageDb'].forEach(function (n) { indexedDB.deleteDatabase(n); });
+        location.reload();
+      }
+    } catch (e) { location.reload(); }
+  }
+  window.addEventListener('error', function (e) { if (e.message && looksLikeCorruptCache(e.message)) heal(); });
+  window.addEventListener('unhandledrejection', function (e) {
+    var msg = e.reason && (e.reason.message || String(e.reason));
+    if (msg && looksLikeCorruptCache(msg)) heal();
+  });
+})();
+</script>
 <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore-compat.js"></script>
