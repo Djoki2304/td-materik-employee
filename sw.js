@@ -1,5 +1,8 @@
-// Офлайн-кэш: отдаём из кэша, в фоне обновляем — новая версия подхватится при следующем запуске.
-const CACHE = 'tdme-shell-v1';
+// Офлайн-кэш: пытаемся сначала сходить в сеть (чтобы правки доходили сразу), кэш — только
+// как запасной вариант при отсутствии сети. Старая версия (stale-while-revalidate) отдавала
+// устаревший код при каждой загрузке, пока фон не подтянет новый — правки требовали двух
+// перезагрузок подряд, что при активной разработке было хуже, чем просто идти в сеть.
+const CACHE = 'tdme-shell-v2';
 const FILES = ['./', 'index.html', 'style.css', 'logic.js', 'app.js', 'firebase-config.js', 'manifest.webmanifest',
   'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 
@@ -18,16 +21,13 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   e.respondWith(
-    caches.match(e.request, { ignoreSearch: true }).then(hit => {
-      const net = fetch(e.request).then(res => {
-        if (res && res.ok) {
-          const copy = res.clone();
-          caches.open(CACHE).then(c => c.put(e.request, copy));
-        }
-        return res;
-      }).catch(() => hit);
-      return hit || net;
-    })
+    fetch(e.request).then(res => {
+      if (res && res.ok) {
+        const copy = res.clone();
+        caches.open(CACHE).then(c => c.put(e.request, copy));
+      }
+      return res;
+    }).catch(() => caches.match(e.request, { ignoreSearch: true }))
   );
 });
 

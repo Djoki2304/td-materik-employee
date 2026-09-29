@@ -31,8 +31,11 @@
     return /FIRESTORE/.test(msg) && /(INTERNAL ASSERTION|Unexpected state)/.test(msg);
   }
   function heal() {
-    if (sessionStorage.getItem('tdme.healed')) return;
-    sessionStorage.setItem('tdme.healed', '1');
+    // Cooldown instead of a one-shot flag: a device can genuinely hit this more than once,
+    // but we still need a floor so a persistent bug can't reload-loop forever.
+    var last = Number(localStorage.getItem('tdme.healedAt') || 0);
+    if (Date.now() - last < 15000) return;
+    localStorage.setItem('tdme.healedAt', String(Date.now()));
     try {
       if (indexedDB.databases) {
         indexedDB.databases().then(function (dbs) {
@@ -49,6 +52,17 @@
   window.addEventListener('unhandledrejection', function (e) {
     var msg = e.reason && (e.reason.message || String(e.reason));
     if (msg && looksLikeCorruptCache(msg)) heal();
+  });
+  // Belt-and-suspenders: some SDK-internal failures only ever reach console.error without
+  // surfacing as a catchable window error, leaving a genuinely blank screen with no signal.
+  // If nothing has rendered into #lock or #view after a few seconds, treat it as the same fault.
+  window.addEventListener('load', function () {
+    setTimeout(function () {
+      var lock = document.getElementById('lock'), view = document.getElementById('view');
+      var lockShown = lock && !lock.hidden && lock.innerHTML.trim();
+      var viewShown = view && view.innerHTML.trim();
+      if (!lockShown && !viewShown) heal();
+    }, 6000);
   });
 })();
 </script>
