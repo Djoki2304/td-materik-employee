@@ -1,0 +1,56 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    function isSelf(employeeId) {
+      return request.auth != null &&
+        get(/databases/$(database)/documents/employees/$(employeeId)).data.authUid == request.auth.uid;
+    }
+
+    // Управляется вручную в консоли Firebase — один документ на владельца магазина
+    match /admins/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    // Публичный список имён для экрана входа сотрудника (без чувствительных данных)
+    match /directory/{employeeId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Название магазина, логотип, валюта — для экрана входа и общего вида
+    match /config/public {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Должности и ставки — нужны сотруднику для расчёта своей зарплаты на клиенте
+    match /positions/{positionId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+
+    match /employees/{employeeId} {
+      allow read: if isAdmin() || isSelf(employeeId);
+      allow write: if isAdmin();
+
+      match /attendance/{day} {
+        allow read: if isAdmin() || isSelf(employeeId);
+        allow write: if isAdmin();
+      }
+      match /payments/{paymentId} {
+        allow read: if isAdmin() || isSelf(employeeId);
+        allow write: if isAdmin();
+      }
+      match /pushSubscriptions/{subId} {
+        allow read: if isAdmin();
+        allow write: if isAdmin() || isSelf(employeeId);
+      }
+    }
+  }
+}
