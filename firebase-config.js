@@ -14,3 +14,6 @@ const VAPID_PUBLIC_KEY = 'BMJy_aSdax_Dgu6Ko04PGb_x67yP7CztbGkQGLSYu-S2CUcoFnq_Wv
 firebase.initializeApp(FIREBASE_CONFIG);
 const auth = firebase.auth();
 const db = firebase.firestore();
+// Safari/WebKit's default streaming transport trips a known Firestore SDK bug
+// ("INTERNAL ASSERTION FAILED: Unexpected state") — long-polling avoids it.
+db.settings({ experimentalAutoDetectLongPolling: true });
