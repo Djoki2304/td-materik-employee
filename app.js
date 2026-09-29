@@ -92,7 +92,7 @@ async function pressKey(k) {
 /* ================= Данные кабинета (реальное время) ================= */
 let employeeId = null;
 let unsubs = [];
-let emp = null, positions = [], attMap = {}, payments = [];
+let emp = null, positions = [], attMap = {}, payments = [], empLoadError = '';
 let ui = { month: L.today().slice(0, 7) };
 
 function detachAll() { unsubs.forEach(u => u()); unsubs = []; }
@@ -108,6 +108,10 @@ function fakeS() {
 
 function attachListeners() {
   detachAll();
+  empLoadError = '';
+  // Belt-and-suspenders: if the employee doc listener never fires at all (network stall,
+  // never an explicit error), don't leave "Загрузка…" up forever with no way out.
+  setTimeout(() => { if (!emp && !empLoadError) { empLoadError = 'Не удалось загрузить данные — проверьте связь и попробуйте снова'; renderApp(); } }, 10000);
   unsubs.push(db.collection('config').doc('public').onSnapshot(doc => {
     if (doc.exists) CFG = Object.assign(CFG, doc.data());
     renderApp();
@@ -118,8 +122,9 @@ function attachListeners() {
   }, () => {}));
   unsubs.push(db.collection('employees').doc(employeeId).onSnapshot(doc => {
     emp = doc.exists ? { id: doc.id, ...doc.data() } : null;
+    empLoadError = doc.exists ? '' : 'Запись не найдена — обратитесь к администратору';
     renderApp();
-  }, () => toast('Не удалось загрузить данные')));
+  }, err => { empLoadError = 'Ошибка доступа: ' + err.message; renderApp(); }));
   unsubs.push(db.collection('employees').doc(employeeId).collection('attendance').onSnapshot(snap => {
     attMap = {};
     snap.forEach(d => { attMap[d.id] = d.data(); });
@@ -143,7 +148,12 @@ function schedLabel() {
 }
 
 function renderApp() {
-  if (!emp) { $('#view').innerHTML = `<div class="card empty" style="margin-top:40px">Загрузка…</div>`; return; }
+  if (!emp) {
+    $('#view').innerHTML = empLoadError
+      ? `<div class="card empty" style="margin-top:40px">${esc(empLoadError)}<br><button class="btn small flat" style="margin-top:12px" data-act="logout">Выйти</button></div>`
+      : `<div class="card empty" style="margin-top:40px">Загрузка…</div>`;
+    return;
+  }
   const tdy = L.today();
   const S = fakeS();
   const bal = L.balanceOf(S, employeeId, tdy);
