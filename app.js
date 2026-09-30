@@ -41,21 +41,30 @@ let directory = [];
 let pickedEmployeeId = null;
 let pinBuf = '';
 let loginErr = '';
+let directoryError = '';
 
 async function loadDirectory() {
-  const snap = await db.collection('directory').get();
-  // authEmail пуст, пока администратор не задал PIN этому сотруднику — таким нечем входить, скрываем их
-  directory = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-    .filter(e => e.authEmail)
-    .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  try {
+    const snap = await db.collection('directory').get();
+    // authEmail пуст, пока администратор не задал PIN этому сотруднику — таким нечем входить, скрываем их
+    directory = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .filter(e => e.authEmail)
+      .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+    directoryError = '';
+  } catch (err) {
+    directoryError = err.message || String(err);
+  }
 }
 
 function renderPicker() {
   const el = $('#lock'); el.hidden = false;
+  const empty = directoryError
+    ? `<div class="sub" style="grid-column:1/-1;text-align:center">Не удалось загрузить список: ${esc(directoryError)}<br><button class="btn small flat" style="margin-top:8px" data-act="retryDirectory">Повторить</button></div>`
+    : `<div class="sub" style="grid-column:1/-1;text-align:center">Список пуст — обратитесь к администратору<br><button class="btn small flat" style="margin-top:8px" data-act="retryDirectory">Обновить</button></div>`;
   el.innerHTML = `<img src="${logoSrc()}" alt="" style="width:88px;height:88px;border-radius:20px;object-fit:cover">
     <h2 style="margin:0">${esc(CFG.shopName)}</h2><div class="sub">Выберите себя, чтобы войти</div>
     <div class="picker">${directory.map(e => `<button data-act="pick" data-id="${e.id}">${avatar(e.name)}<b>${esc(e.name)}</b></button>`).join('') ||
-      '<div class="sub" style="grid-column:1/-1;text-align:center">Список пуст — обратитесь к администратору</div>'}</div>`;
+      empty}</div>`;
 }
 
 function renderPinPad() {
@@ -273,6 +282,7 @@ document.addEventListener('click', ev => {
   else if (d.act === 'key') pressKey(d.k);
   else if (d.act === 'month') { ui.month = L.addMonths(ui.month, +d.d); renderApp(); }
   else if (d.act === 'logout') { localStorage.removeItem(LS_EMP); auth.signOut(); }
+  else if (d.act === 'retryDirectory') { loadDirectory().then(renderPicker); }
 });
 
 boot();
